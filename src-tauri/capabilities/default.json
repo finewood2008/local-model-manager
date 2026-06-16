@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "默认权限：核心、对话框、shell（用于 ollama CLI 与文件选择）",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "shell:default"
+  ]
+}
