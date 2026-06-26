@@ -21,12 +21,14 @@ pub fn run() {
             ollama::ollama_chat,
             ollama::ollama_stop_chat,
             import::ollama_create_from_gguf,
+            import::ollama_apply_template,
             // 服务控制
             service::service_status,
             service::service_start,
             service::service_stop,
             // 系统监控 & 文件
             sysmon::system_stats,
+            sysmon::hardware_info,
             files::list_gguf_files,
         ])
         .run(tauri::generate_context!())

@@ -10,6 +10,7 @@ import { ServiceBar } from "../components/ServiceBar";
 import { formatBytes } from "../utils/format";
 import type { ServiceStatus } from "../api/ollama";
 import type { StreamEvent } from "../api/transport";
+import { TEMPLATE_PRESETS } from "../templates";
 
 const DEFAULT_GGUF_DIR = "/home/user/models";
 
@@ -30,6 +31,8 @@ export function ImportPullPage({
   const [name, setName] = useState("");
   const [numCtx, setNumCtx] = useState("");
   const [system, setSystem] = useState("");
+  const [tmplKey, setTmplKey] = useState("chatml");
+  const [customTmpl, setCustomTmpl] = useState("");
   const [importing, setImporting] = useState(false);
   const [importLog, setImportLog] = useState<string[]>([]);
 
@@ -71,9 +74,15 @@ export function ImportPullPage({
     if (!ggufPath || !name) return;
     setImporting(true);
     setImportLog([]);
+    const preset = TEMPLATE_PRESETS.find((p) => p.key === tmplKey);
+    const template =
+      tmplKey === "custom" ? customTmpl || undefined : preset?.tmpl.template || undefined;
+    const stop = tmplKey === "custom" ? undefined : preset?.tmpl.stop;
     const params = {
       num_ctx: numCtx ? parseInt(numCtx, 10) : undefined,
       system: system || undefined,
+      template,
+      stop,
     };
     try {
       await createFromGguf(name, ggufPath, params, (ev: StreamEvent) => {
@@ -189,6 +198,34 @@ export function ImportPullPage({
               />
             </div>
           </div>
+
+          <div className="field">
+            <label>对话模板（关键！选错或不选会导致模型“自问自答 / 答非所问”）</label>
+            <select
+              className="select"
+              value={tmplKey}
+              onChange={(e) => setTmplKey(e.target.value)}
+            >
+              {TEMPLATE_PRESETS.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {tmplKey === "custom" && (
+            <div className="field">
+              <label>自定义模板（ollama Modelfile TEMPLATE，Go 模板语法）</label>
+              <textarea
+                className="textarea"
+                value={customTmpl}
+                placeholder={"如：{{ if .System }}<|im_start|>system\\n{{ .System }}<|im_end|>\\n{{ end }}..."}
+                onChange={(e) => setCustomTmpl(e.target.value)}
+                style={{ minHeight: 120, fontFamily: "monospace" }}
+              />
+            </div>
+          )}
 
           <div className="field">
             <label>System Prompt（可选）</label>

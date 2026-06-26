@@ -102,11 +102,12 @@ pub async fn ollama_delete(name: String) -> Result<(), String> {
 
 // ---------- 流式：把响应体按 NDJSON 逐行推给前端 ----------
 
+/// 返回 true 表示流中出现过错误（HTTP 非 2xx / 网络错误 / NDJSON 内含 error 字段）。
 async fn stream_ndjson(
     resp: reqwest::Response,
     on_event: &Channel<StreamEvent>,
     cancel: &AtomicBool,
-) {
+) -> bool {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -114,16 +115,17 @@ async fn stream_ndjson(
             message: format!("{status} {body}"),
         });
         let _ = on_event.send(StreamEvent::Done);
-        return;
+        return true;
     }
 
+    let mut errored = false;
     let mut stream = resp.bytes_stream();
     let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
         // 用户点了“停止”：中断循环，drop stream 即关闭连接，ollama 随之停止生成
         if cancel.load(Ordering::SeqCst) {
             let _ = on_event.send(StreamEvent::Done);
-            return;
+            return errored;
         }
         match chunk {
             Ok(bytes) => {
@@ -138,7 +140,15 @@ async fn stream_ndjson(
                     }
                     match serde_json::from_str::<Value>(line) {
                         Ok(payload) => {
-                            let _ = on_event.send(StreamEvent::Data { payload });
+                            // ollama 在 200 流中用 {"error": "..."} 表达失败
+                            if let Some(err) = payload.get("error").and_then(|e| e.as_str()) {
+                                errored = true;
+                                let _ = on_event.send(StreamEvent::Error {
+                                    message: err.to_string(),
+                                });
+                            } else {
+                                let _ = on_event.send(StreamEvent::Data { payload });
+                            }
                         }
                         Err(_) => {
                             let _ = on_event.send(StreamEvent::Line {
@@ -149,6 +159,7 @@ async fn stream_ndjson(
                 }
             }
             Err(e) => {
+                errored = true;
                 let _ = on_event.send(StreamEvent::Error {
                     message: e.to_string(),
                 });
@@ -161,10 +172,18 @@ async fn stream_ndjson(
     let tail = tail.trim();
     if !tail.is_empty() {
         if let Ok(payload) = serde_json::from_str::<Value>(tail) {
-            let _ = on_event.send(StreamEvent::Data { payload });
+            if let Some(err) = payload.get("error").and_then(|e| e.as_str()) {
+                errored = true;
+                let _ = on_event.send(StreamEvent::Error {
+                    message: err.to_string(),
+                });
+            } else {
+                let _ = on_event.send(StreamEvent::Data { payload });
+            }
         }
     }
     let _ = on_event.send(StreamEvent::Done);
+    errored
 }
 
 #[tauri::command]
@@ -175,7 +194,10 @@ pub async fn ollama_pull(name: String, on_event: Channel<StreamEvent>) -> Result
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    stream_ndjson(resp, &on_event, &NEVER_CANCEL).await;
+    // 出错时返回 Err，让前端 pullModel() 的 promise 直接 reject，下载链不再误入套模板阶段。
+    if stream_ndjson(resp, &on_event, &NEVER_CANCEL).await {
+        return Err("拉取失败".into());
+    }
     Ok(())
 }
 
@@ -218,6 +240,6 @@ pub async fn ollama_chat(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    stream_ndjson(resp, &on_event, &CANCEL_CHAT).await;
+    let _ = stream_ndjson(resp, &on_event, &CANCEL_CHAT).await;
     Ok(())
 }

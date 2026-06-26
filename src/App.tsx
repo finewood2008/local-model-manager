@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useServiceStatus } from "./hooks/useServiceStatus";
+import { useDownloads } from "./hooks/useDownloads";
 import { ModelsPage } from "./pages/ModelsPage";
+import { CatalogPage } from "./pages/CatalogPage";
 import { ImportPullPage } from "./pages/ImportPullPage";
 import { ChatPage } from "./pages/ChatPage";
 import { MonitorPage } from "./pages/MonitorPage";
 
-type Tab = "models" | "import" | "chat" | "monitor";
+type Tab = "models" | "catalog" | "import" | "chat" | "monitor";
 
 const NAV: { key: Tab; icon: string; label: string }[] = [
   { key: "models", icon: "◆", label: "模型" },
+  { key: "catalog", icon: "🛒", label: "模型市场" },
   { key: "import", icon: "↥", label: "导入 / 获取" },
   { key: "chat", icon: "💬", label: "对话" },
   { key: "monitor", icon: "📊", label: "监控" },
@@ -18,6 +21,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("models");
   const [chatModel, setChatModel] = useState<string | undefined>();
   const { status, refresh } = useServiceStatus();
+  const downloads = useDownloads();
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -61,6 +65,13 @@ export default function App() {
             serviceStatus={status}
             refreshService={refresh}
             onTestModel={testModel}
+          />
+        )}
+        {tab === "catalog" && (
+          <CatalogPage
+            serviceStatus={status}
+            refreshService={refresh}
+            downloads={downloads}
           />
         )}
         {tab === "import" && (

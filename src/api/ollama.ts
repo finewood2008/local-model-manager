@@ -42,6 +42,21 @@ export interface SystemStats {
   mem_used: number;
   mem_available: number;
 }
+export interface GpuInfo {
+  name: string;
+  vram_total: number;
+  kind: string;
+}
+export interface HardwareInfo {
+  os: string;
+  arch: string;
+  cpu_brand: string;
+  cpu_physical_cores: number;
+  cpu_threads: number;
+  mem_total: number;
+  mem_available: number;
+  gpus: GpuInfo[];
+}
 export interface GgufFile {
   path: string;
   name: string;
@@ -51,6 +66,10 @@ export interface ImportParams {
   num_ctx?: number;
   system?: string;
   temperature?: number;
+  /** ollama Modelfile 的 TEMPLATE（Go 模板）；空/省略表示不写、用 GGUF 自带 */
+  template?: string;
+  /** PARAMETER stop 停止符 */
+  stop?: string[];
 }
 
 // ---------- 非流式 ----------
@@ -85,6 +104,9 @@ export async function serviceStop(): Promise<void> {
 export async function systemStats(): Promise<SystemStats> {
   return t.invoke("system_stats");
 }
+export async function hardwareInfo(): Promise<HardwareInfo> {
+  return t.invoke("hardware_info");
+}
 export async function listGgufFiles(dir: string): Promise<GgufFile[]> {
   return t.invoke("list_gguf_files", { dir });
 }
@@ -109,6 +131,17 @@ export function chat(
 /** 停止当前对话生成 */
 export async function stopChat(): Promise<void> {
   return t.invoke("ollama_stop_chat");
+}
+
+/** 给已存在的 base 模型套上对话模板，另存为 name（复用权重，秒级）。 */
+export function applyTemplate(
+  base: string,
+  name: string,
+  template: string,
+  stop: string[],
+  onEvent: (ev: StreamEvent) => void
+): Promise<void> {
+  return t.stream("ollama_apply_template", { base, name, template, stop }, onEvent);
 }
 
 export function createFromGguf(
